@@ -18,7 +18,7 @@ def run_from_ipython():
 
 if run_from_ipython():
     # I wanted to be clever but python doesn't like this even if it is in an if or try.
-    %cd /Users/jt/Desktop/palsson_rotation/transAnalysis/data
+    #%cd /Users/jt/Desktop/palsson_rotation/transAnalysis/data
     print 'Run from ipython'
 else:
     print 'Not run from ipython.'
@@ -64,7 +64,7 @@ f.close()
 # Get fpkm values per gene and convert into dict. 
 fpkm_df = pd.read_csv(fpkm_filename, delimiter='\t') 
 # Convert to dict of ids and FPKM values.
-gene_fpkm_dict = dict(zip(fpkms_df.tracking_id, fpkms_df.FPKM))
+gene_fpkm_dict = dict(zip(fpkm_df.tracking_id, fpkm_df.FPKM))
 
 # <codecell>
 
@@ -96,7 +96,11 @@ for minspan in minspan_list:
         except: # A lot don't match becaues of SBML naming vs names from the minspan file
             no_data_count += 1
             #print "%s is not in fpkm_reaction_dict." % str(reaction)
-    minspan_fpkm = minspan_fpkm / (len(minspan) - no_data_count) # Just aveage for now. 
+    try:
+        minspan_fpkm = minspan_fpkm / (len(minspan) - no_data_count) # Just aveage for now.
+    except:
+        # There is no data for this minspan
+        pass
     minspan_fpkm_list.append(minspan_fpkm)
 
 # Create list of tuples with fpkm values and then the minspan list
@@ -110,6 +114,18 @@ ranked_minspans = zip(range(1,len(ranked_minspans)+1), ranked_minspans)
 output_filename = 'output_minspan_rank_%s.txt' % fpkm_filename
 f = open(output_filename, 'w')
 for item in ranked_minspans:
+    f.write("%s\n" % str(item))
+f.close()
+
+# <codecell>
+
+# Just for fun find the fpkm ranking per reacion. 
+ranked_reactions = [(b, a) for a, b in reaction_fpkm_dict.items()]
+ranked_reactions = sorted(ranked_reactions, reverse=True)
+
+output_filename = 'output_gene_rank_%s.txt' % fpkm_filename
+f = open(output_filename, 'w')
+for item in ranked_reactions:
     f.write("%s\n" % str(item))
 f.close()
 
