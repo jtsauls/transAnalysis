@@ -122,35 +122,6 @@ def make_reaction_fpkm_dict(model, gene_fpkm_dict, mode=0):
     return reaction_fpkm_dict
 
 
-#THIS IS THE OLD ONE THAT JUST ADDS THEM UP
-def make_reaction_fpkm_dict1(model, gene_fpkm_dict):
-    '''Create a dict with reactions as keys and fpkms as values.
-    INPUT
-        model              Cobra model
-        gene_fpkm_dict     Dictionary mapping fpkm values to
-                           genes. The output of make_gene_fpkm_dict
-    OUTPUT
-        reaction_fpkm_dict
-    '''
-    reaction_fpkm_dict = {}
-
-    for reaction in model.reactions:
-        gene_list = reaction.get_gene()
-        # Combine fpkm data for involved genes.
-        fpkm_combined = 0.0
-        for gene in gene_list:
-            try:
-                # Just add them. This makes since for or, not and
-                fpkm_combined += gene_fpkm_dict[str(gene)]
-            except:
-                pass
-                #print "%s (from %s) is not in fpkm_gene_dict." % \
-                #(str(gene), str(reaction.id))
-        reaction_fpkm_dict[reaction.id] = fpkm_combined
-
-    return reaction_fpkm_dict
-
-
 def make_minspan_fpkm_list(minspan_list, reaction_fpkm_dict,
                            sort=False):
     '''Rank minspans based on the average fpkm values of their
