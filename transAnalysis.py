@@ -42,7 +42,7 @@ def make_minspan_list(minspan_filename):
     return minspan_list
 
 
-def make_gene_fpkm_dict(fpkm_filename, lowcut=0, highcut=None):
+def make_gene_fpkm_dict(fpkm_filename, norm=False, lowcut=0, highcut=None):
     '''Reads a fpkm tracking file and returns
     a dictionary with genes as keys and fpkms
     as values.
@@ -55,7 +55,10 @@ def make_gene_fpkm_dict(fpkm_filename, lowcut=0, highcut=None):
     '''
     # Get fpkm values per gene and convert into dict.
     fpkm_df = pd.read_csv(fpkm_filename, delimiter='\t')
+
     # Process values, though not sure this is wise here
+    if norm:  # Normalize values
+        fpkm_df.FPKM = fpkm_df.FPKM / max(fpkm_df.FPKM)
 
     # Convert to dict of ids and FPKM values.
     gene_fpkm_dict = dict(zip(fpkm_df.tracking_id, fpkm_df.FPKM))
@@ -189,14 +192,14 @@ def fpkm_comparison(fpkm_filename1, fpkm_filename2,
     filename_list = [fpkm_filename1, fpkm_filename2]
     minspan_fpkm_vals = [0, 0]
     minspan_fpkm_ranks = [0, 0]
-    x = range(1, len(minspan_list) + 1)
+    x = range(1, len(minspan_list) + 1)  # Just a range for rank #'s.
 
     for i in range(2):
         gene_fpkm_dict = make_gene_fpkm_dict(filename_list[i])
         reaction_fpkm_dict = make_reaction_fpkm_dict(
                              model, gene_fpkm_dict, mode)
         minspan_fpkm_list = make_minspan_fpkm_list(
-                            minspan_list, reaction_fpkm_dict)
+                            minspan_list, reaction_fpkm_dict, False)
         # Change (value, minspan) tuple structure to two lists and
         # pull out values.
         minspan_fpkm_vals[i] = zip(*minspan_fpkm_list)[0]
