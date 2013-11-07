@@ -141,6 +141,8 @@ def make_reaction_fpkm_dict(model, gene_fpkm_dict, mode=0):
                     #(str(gene), str(reaction.id))
             reaction_fpkm_dict[reaction.id] = fpkm_combined
 
+    # Should report how many reactions from model not in fpkm file
+    # and vice versa
     return reaction_fpkm_dict
 
 
