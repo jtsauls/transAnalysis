@@ -6,7 +6,9 @@ import numpy as np
 from scipy import stats
 import matplotlib.pyplot as plt
 import pandas as pd
-#import cobra as cp
+import cobra as cp  # Used in Eflux
+#import fluxAnalysis
+import pfba_example
 
 
 def make_minspan_list(minspan_filename):
@@ -26,6 +28,11 @@ def make_minspan_list(minspan_filename):
     # (aka the last line with pathway length).
     minspan_df = minspan_df.drop(minspan_df.index[-1])
 
+    # Change (e) at end of reaction to _e
+    #minspan_df.replace('\(e\)$', '_e')
+    #for reacton in minspan_df[0]:
+    #    reaction = re.sub('\(e\)$', '_e', reaction)
+
     # One minspan per column, starts on 3rd column.
     for col in minspan_df.columns[2:]:
         # Index of rows with values (not NaN)
@@ -37,6 +44,12 @@ def make_minspan_list(minspan_filename):
         # Change from unicode... not sure if this is wise.
         now_minspan = [now_minspan[i].encode('ascii', 'ignore')
                        for i in range(len(now_minspan))]
+        # Change (e) to _e
+        now_minspan = [reaction.replace('(e)', '_e') for reaction in
+                       now_minspan]
+        now_minspan = [reaction.replace('-', '__') for reaction in
+                       now_minspan]
+
         minspan_list.append(now_minspan)
 
     return minspan_list
@@ -71,11 +84,16 @@ def make_reaction_fpkm_dict(model, gene_fpkm_dict, mode=0):
         model              Cobra model
         gene_fpkm_dict     Dictionary mapping fpkm values to
                            genes. The output of make_gene_fpkm_dict
+        mode               Indictates how to combine fpkms according to
+                           gene reaction association.
+                           0 averages and's and sums or's
+                           1 sums everything
     OUTPUT
         reaction_fpkm_dict
     '''
     reaction_fpkm_dict = {}
 
+    # Averages and's and sums or's
     if mode == 0:
         for reaction in model.reactions:
             gene_bool = reaction.gene_reaction_rule
@@ -104,9 +122,10 @@ def make_reaction_fpkm_dict(model, gene_fpkm_dict, mode=0):
                     pass
             if data_count == 0:
                 reaction_fpkm_dict[reaction.id] = float('NaN')
-                #print('no data')
+                #print('no data for ', reaction.id)
             else:
                 reaction_fpkm_dict[reaction.id] = fpkm_combined
+    # This will just add them up
     elif mode == 1:
         for reaction in model.reactions:
             gene_list = reaction.get_gene()
@@ -253,3 +272,89 @@ def fpkm_comparison(fpkm_filename1, fpkm_filename2,
     plt.ylabel('minspan rank')
     plt.scatter(minspan_fpkm_ranks[0], minspan_fpkm_ranks[1], c='y')
     plt.show()  # I'm not sure why fig is not needen as an arg here.
+
+
+def Eflux(model, reaction_fpkm_dict, pFBA=True,
+          scale=True, scale_reaction_id='EX_glc_e', scale_value=-10):
+    '''Optimizes the model with bounds adjusted by fpkm data. If a
+    scale reaction is provided, bounds will only be dictated by fpkm
+    values and afterwards the fluxes will be weighted by the flux ratio
+    of the scale reaction without and with Eflux. e.g. Provide 'EX_glc_e'
+    as scale reaction with flux under normal condidions of -10. Eflux
+    will be performed with bounds as dictatedby fpkm levels.
+    Eflux_sol.x will then be adjusted such that the flux of 'EX_glc_e'
+    is again -10. This makes it comparible to the normal solution, but
+    you lose specific control over the bounds.
+    INPUT
+        model
+        reaction_fpkm_dict  From make_reaction_fpkm_dict
+        scale               Boolean indicates to scale fluxes or not
+        scale_reaction_id   Name of reaction from which fluxes are scaled
+    OUTPUT
+        sol                 Normal Cobra solution with pFBA
+        Eflux_sol           Cobra solution under Eflux and pFBA
+    '''
+
+    # Adjust bounds
+    v = list(reaction_fpkm_dict.values())
+    k = list(reaction_fpkm_dict.keys())
+    v = abs(v / max(v))  # abs should be superfulous
+    key_val_array = zip(k, v)
+
+    if scale:
+        for reaction in model.reactions:
+            if reaction.lower_bound < 0:
+                reaction.lower_bound = -1 / 1000
+            else:
+                reaction.lower_bound = 0
+            if reaction.upper_bound > 0:
+                reaction.upper_bound = 1 / 1000
+            else:
+                reaction.upper_bound = 0
+
+    for reaction in key_val_array:
+        if not np.isnan(reaction[1]):
+            reaction_name = reaction[0]
+            cobra_reaction = model.reactions.get_by_id(reaction_name)
+            cobra_reaction.lower_bound = cobra_reaction.lower_bound * \
+                                         reaction[1]
+            cobra_reaction.upper_bound = cobra_reaction.upper_bound * \
+                                         reaction[1]
+        else:
+            pass
+
+    # Compute flux
+    biomass_reaction = 'Ec_biomass_iJO1366_core_53p95M'
+    if pFBA:
+        # This should find the objective function automatically
+        pfba_sol = pfba_example.run_pfba(model,
+                                         biomass_reaction)
+    else:
+        model.optimize()
+
+    # Weight solution by scaling reaction
+    if scale:
+        if not pFBA:
+            scale_flux = model.solution.x_dict[scale_reaction_id]
+        else:
+            scale_flux = pfba_sol[scale_reaction_id]
+            print scale_value, scale_flux
+
+        if scale_flux == 0:
+            print 'Scale flux is 0'
+            return pfba_sol
+
+        scale_by = abs(scale_value / scale_flux)
+        #model.solution.x = list(np.array(model.solution.x) * scale_by)
+        #model.solution.f = model.solution.f * scale_by
+        #for k, v in model.solution.x_dict.iteritems():
+        #    model.solution.x_dict = v * scale_by
+        for k, b in pfba_sol.iteritems():
+            pfba_sol[k] = v * scale_by
+
+    if pFBA:
+        Eflux_sol = pfba_sol
+    else:
+        Eflux_sol = model.solution
+
+    return Eflux_sol
