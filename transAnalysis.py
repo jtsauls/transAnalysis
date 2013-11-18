@@ -276,7 +276,7 @@ def fpkm_comparison(fpkm_filename1, fpkm_filename2,
     plt.show()  # I'm not sure why fig is not needen as an arg here.
 
 
-def Eflux(model, reaction_fpkm_dict, pFBA=True,
+def Eflux(model, reaction_fpkm_dict, pFBA=False,
           scale=True, scale_reaction_id='EX_glc_e', scale_value=-10):
     '''Optimizes the model with bounds adjusted by fpkm data. If a
     scale reaction is provided, bounds will only be dictated by fpkm
@@ -298,61 +298,72 @@ def Eflux(model, reaction_fpkm_dict, pFBA=True,
     '''
 
     # Adjust bounds
-    v = list(reaction_fpkm_dict.values())
     k = list(reaction_fpkm_dict.keys())
+    v = list(reaction_fpkm_dict.values())
     v = abs(v / max(v))  # abs should be superfulous
-    key_val_array = zip(k, v)
+    fpkm_array = zip(k, v)
 
-    if scale:
-        for reaction in model.reactions:
-            if reaction.lower_bound < 0:
-                reaction.lower_bound = -1 / 1000
-            else:
-                reaction.lower_bound = 0
-            if reaction.upper_bound > 0:
-                reaction.upper_bound = 1 / 1000
-            else:
-                reaction.upper_bound = 0
+    # Eflux ignores human set uptake bounds
+    for reaction in model.reactions:
+        if reaction.lower_bound < 0:
+            reaction.lower_bound = -1000
+        else:
+            reaction.lower_bound = 0
+        if reaction.upper_bound > 0:
+            reaction.upper_bound = 1000
+        else:
+            reaction.upper_bound = 0
 
-    for reaction in key_val_array:
-        if not np.isnan(reaction[1]):
-            reaction_name = reaction[0]
-            cobra_reaction = model.reactions.get_by_id(reaction_name)
-            cobra_reaction.lower_bound = cobra_reaction.lower_bound * \
-                                         reaction[1]
-            cobra_reaction.upper_bound = cobra_reaction.upper_bound * \
-                                         reaction[1]
+    # Here we scale each bound by the relative fpkm values
+    for rxn in fpkm_array:
+        if not np.isnan(rxn[1]):
+            rxn_name = rxn[0]
+            cobrarxn = model.reactions.get_by_id(rxn_name)
+            cobrarxn.lower_bound = cobrarxn.lower_bound * rxn[1]
+            cobrarxn.upper_bound = cobrarxn.upper_bound * rxn[1]
         else:
             pass
 
     # Compute flux
-    biomass_reaction = 'Ec_biomass_iJO1366_core_53p95M'
+    biomass_rxn = 'Ec_biomass_iJO1366_core_53p95M'
+    model.reactions.get_by_id(biomass_rxn).lower_bound = 0
+    model.reactions.get_by_id(biomass_rxn).upper_bound = 1000
+
+    # pFBA does not work
     if pFBA:
         # This should find the objective function automatically
         pfba_sol = pfba_example.run_pfba(model,
-                                         biomass_reaction)
+                                         biomass_rxn)
     else:
         model.optimize()
 
-    # Weight solution by scaling reaction
+    # Weight solution and bounds by scaling reaction
     if scale:
         if not pFBA:
             scale_flux = model.solution.x_dict[scale_reaction_id]
         else:
             scale_flux = pfba_sol[scale_reaction_id]
-            print scale_value, scale_flux
+
+        #print scale_value, scale_flux
 
         if scale_flux == 0:
             print 'Scale flux is 0'
             return pfba_sol
 
         scale_by = abs(scale_value / scale_flux)
-        #model.solution.x = list(np.array(model.solution.x) * scale_by)
-        #model.solution.f = model.solution.f * scale_by
-        #for k, v in model.solution.x_dict.iteritems():
-        #    model.solution.x_dict = v * scale_by
-        for k, b in pfba_sol.iteritems():
-            pfba_sol[k] = v * scale_by
+
+    model.solution.x = list(np.array(model.solution.x) * scale_by)
+    model.solution.f = model.solution.f * scale_by
+
+    for rxn in model.reactions:
+        rxn.lower_bound = rxn.lower_bound * scale_by
+        rxn.upper_bound = rxn.upper_bound * scale_by
+
+        model.solution.x_dict[rxn.id] = \
+                model.solution.x_dict[rxn.id] * scale_by
+
+        #for k, b in pfba_sol.iteritems():
+        #    pfba_sol[k] = v * scale_by
 
     if pFBA:
         Eflux_sol = pfba_sol
@@ -360,3 +371,42 @@ def Eflux(model, reaction_fpkm_dict, pFBA=True,
         Eflux_sol = model.solution
 
     return Eflux_sol
+
+
+def relax_bounds(model):
+    # Test the impact of Eflux bounds
+    unbound_reactions = []
+    count = 0
+
+    relaxed_value = \
+        model.reactions.Ec_biomass_iJO1366_core_53p95M.upper_bound
+
+    # Eflux orginal solution
+    Eflux_sol = model.solution
+
+    for rxn in model.reactions:
+        # Save current bounds.
+        ub_Eflux = model.reactions.get_by_id(rxn.id).upper_bound
+        lb_Eflux = model.reactions.get_by_id(rxn.id).lower_bound
+
+        # Change bounds back to that of original model
+        model.reactions.get_by_id(rxn.id).upper_bound = relaxed_value
+        model.reactions.get_by_id(rxn.id).lower_bound = -relaxed_value
+
+        # Calculate new flux
+        model.optimize()
+
+        # Save data for when f was different
+        if abs(model.solution.f - Eflux_sol.f) > 0.001:
+            unbound_reactions.append((rxn.id,
+                                      model.solution.f - Eflux_sol.f))
+
+        # Revert bounds to normal for next iteration
+        model.reactions.get_by_id(rxn.id).upper_bound = ub_Eflux
+        model.reactions.get_by_id(rxn.id).lower_bound = lb_Eflux
+
+        count += 1
+        if count % 100 == 0:
+            print count
+
+    return
