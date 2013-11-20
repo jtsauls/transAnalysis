@@ -11,7 +11,7 @@ import cobra as cp  # Used in Eflux
 import pfba_example
 
 
-def make_minspan_list(minspan_filename):
+def make_minspan_list(minspan_filename, sheetname='iJO1366'):
     '''Reads the minspan .xls file returns minspans
     INPUT
         minspan_filename    .xls with minspans
@@ -19,7 +19,6 @@ def make_minspan_list(minspan_filename):
         minspan_list        A list of list of minspans
     '''
     minspan_list = []
-    sheetname = 'iJO1366'  # Could make this an arg.
 
     # Get minspan.
     minspan_df = pd.read_excel(minspan_filename, sheetname,
