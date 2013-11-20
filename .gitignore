@@ -1,4 +1,4 @@
 *.log
 *.pyc
 .ipynb_checkpoints/*
-.transAnalysis.py.swg
+.transAnalysis.py.swp
