@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # <nbformat>3.0</nbformat>
+from __future__ import division
 import re
 import math
 import numpy as np
@@ -409,3 +410,48 @@ def relax_bounds(model):
             print count
 
     return
+
+
+def make_minspan_k_dict(minspan_list):
+    '''
+    INPUT
+        minspan_list
+    OUTPUT
+        minspan_k_dict    minspan id as key, list of reactions as value
+    '''
+    minspan_ids = range(1, len(minspan_list) + 1)
+    minspan_k_dict = {}
+    for k in minspan_ids:
+    # The keys will one day be ints, so I will start it that way.
+        minspan_k_dict[str(k)] = minspan_list[k - 1]
+
+    return minspan_k_dict
+
+
+def make_reaction_k_dict(model, minspan_k_dict, report_wo=False):
+    '''
+    INPUTS
+        model
+        minspan_k_dict
+        report_wo    Return reaction_wo_minspans or not.
+    OUTPUTS
+        reaction_k_dict    reaction name as k, with minspans involved
+                           as values.
+        reaction_wo_minspans    Reactions in the model that are not in
+                                a minspan.
+    '''
+    reaction_k_dict = {}
+    reaction_wo_minspans = []
+    for reaction in model.reactions:
+        temp_reaction_list = []
+        for k, v in minspan_k_dict.iteritems():
+            if reaction.id in v:
+                temp_reaction_list.append(k)
+        if len(temp_reaction_list) == 0:
+            reaction_wo_minspans.append(reaction.id)
+        reaction_k_dict[reaction.id] = temp_reaction_list
+
+    if report_wo:
+        return reaction_k_dict, reaction_wo_minspans
+    else:
+        return reaction_k_dict
