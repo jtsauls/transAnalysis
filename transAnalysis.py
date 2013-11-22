@@ -455,3 +455,36 @@ def make_reaction_k_dict(model, minspan_k_dict, report_wo=False):
         return reaction_k_dict, reaction_wo_minspans
     else:
         return reaction_k_dict
+
+
+def make_reaction_k_dict1(minspan_k_dict):
+    ''' This makes a reaction dict but uses reactions that are only 
+    in the minspans
+    INPUTS
+        minspan_k_dict
+    OUTPUTS
+        reaction_k_dict    reaction name as k, with minspans involved
+                           as values.
+    '''
+    reaction_k_dict = {}
+
+reaction_list = []
+for minspan in minspan_list:
+    for rxn in minspan:
+        if rxn not in reaction_list:
+            reaction_list.append(rxn)
+        else:
+            pass
+    for reaction in model.reactions:
+        temp_reaction_list = []
+        for k, v in minspan_k_dict.iteritems():
+            if reaction.id in v:
+                temp_reaction_list.append(k)
+        if len(temp_reaction_list) == 0:
+            reaction_wo_minspans.append(reaction.id)
+        reaction_k_dict[reaction.id] = temp_reaction_list
+
+    if report_wo:
+        return reaction_k_dict, reaction_wo_minspans
+    else:
+        return reaction_k_dict
