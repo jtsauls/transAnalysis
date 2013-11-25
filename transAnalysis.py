@@ -7,9 +7,7 @@ import numpy as np
 from scipy import stats
 import matplotlib.pyplot as plt
 import pandas as pd
-import cobra as cp  # Used in Eflux
-#import fluxAnalysis
-import pfba_example
+import cobra as cp
 
 
 def make_minspan_list(minspan_filename, sheetname='iJO1366'):
@@ -332,8 +330,7 @@ def Eflux(model, reaction_fpkm_dict, pFBA=False,
     # pFBA does not work
     if pFBA:
         # This should find the objective function automatically
-        pfba_sol = pfba_example.run_pfba(model,
-                                         biomass_rxn)
+        pfba_sol = run_pfba(model, biomass_rxn)
     else:
         model.optimize()
 
@@ -457,8 +454,8 @@ def make_reaction_k_dict(model, minspan_k_dict, report_wo=False):
         return reaction_k_dict
 
 
-def make_reaction_k_dict1(minspan_k_dict):
-    ''' This makes a reaction dict but uses reactions that are only 
+def make_reaction_k_dict1(minspan_list):
+    ''' This makes a reaction dict but uses reactions that are only
     in the minspans
     INPUTS
         minspan_k_dict
@@ -467,24 +464,71 @@ def make_reaction_k_dict1(minspan_k_dict):
                            as values.
     '''
     reaction_k_dict = {}
+    minspan_k_dict = make_minspan_k_dict(minspan_list)
 
-reaction_list = []
-for minspan in minspan_list:
-    for rxn in minspan:
-        if rxn not in reaction_list:
-            reaction_list.append(rxn)
-        else:
-            pass
-    for reaction in model.reactions:
+    # Make list of reactions in the minspans
+    reaction_list = []
+    for minspan in minspan_list:
+        for rxn in minspan:
+            if rxn not in reaction_list:
+                reaction_list.append(rxn)
+            else:
+                pass
+
+    for reaction in reaction_list:
         temp_reaction_list = []
         for k, v in minspan_k_dict.iteritems():
-            if reaction.id in v:
+            if reaction in v:
                 temp_reaction_list.append(k)
-        if len(temp_reaction_list) == 0:
-            reaction_wo_minspans.append(reaction.id)
-        reaction_k_dict[reaction.id] = temp_reaction_list
+        reaction_k_dict[reaction] = temp_reaction_list
 
-    if report_wo:
-        return reaction_k_dict, reaction_wo_minspans
-    else:
-        return reaction_k_dict
+    return reaction_k_dict
+
+
+# pFBA commands copied and edited from Teddy’s file.
+def make_model_irrev(model):
+    irrev_model = model.copy()
+    rxns_to_add = []
+    #reaction_to_metabolite = {}
+    old_to_new_rxn_map = {}
+    for rxn in irrev_model.reactions:
+        if rxn.lower_bound < 0:
+            new_rxn = cp.Reaction(name=rxn.id + '_reverse')
+            new_rxn.id = new_rxn.name
+            new_rxn._metabolites = dict([(met, -val) for met, val
+                                         in rxn._metabolites.iteritems()])
+            new_rxn.lower_bound = 0
+            new_rxn.upper_bound = -1 * (rxn.lower_bound)
+            rxns_to_add.append(new_rxn)
+
+            rxn.lower_bound = 0
+            if rxn.upper_bound < 0:
+                new_rxn.lower_bound = -1 * (rxn.upper_bound)
+                rxn.upper_bound = 0
+            old_to_new_rxn_map[rxn.id] = {rxn.id: 1,
+                                          rxn.id + '_reverse': -1}
+        else:
+            old_to_new_rxn_map[rxn.id] = {rxn.id: 1}
+    irrev_model.add_reactions(rxns_to_add)
+    return irrev_model, old_to_new_rxn_map
+
+
+def run_pfba(model, biomass_function_name):
+    model.optimize(new_objective={biomass_function_name: 1})
+
+    model.reactions.get_by_id(biomass_function_name).upper_bound = \
+            model.solution.x_dict[biomass_function_name]
+    model.reactions.get_by_id(biomass_function_name).lower_bound = \
+            model.solution.x_dict[biomass_function_name]
+
+    irrev_model, old_to_new_rxn_map = make_model_irrev(model)
+    obj = dict([(k.id, 1) for k in irrev_model.reactions])
+    irrev_model.optimize(new_objective=obj, objective_sense='minimize')
+
+    sol = {}
+    for rxn in model.reactions:
+        sol[rxn.id] = sum([irrev_model.solution.x_dict[nrxn] * stoich for
+                           nrxn, stoich in
+                           old_to_new_rxn_map[rxn.id].items()])
+
+    return sol
