@@ -1,0 +1,85 @@
+%% LyX 2.0.6 created this file.  For more info, see http://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+\documentclass[english]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{luainputenc}
+\usepackage{babel}
+\begin{document}
+
+\title{Transanalysis IPython Notebooks and Functions}
+
+
+\date{16 December 2013}
+
+
+\author{John Thomas Sauls}
+
+\maketitle
+
+\subsection*{IPython Notebooks}
+\begin{itemize}
+\item import\_block - Holds some common start up stuff, import models, loading
+transcription data, etc.
+\item reaction\_connectedness - Looks at either iJO or the core model and
+the minspans within them. Finds minspans each reaction is in, and
+the size of the minspans. FPKM averages for minspans can be calculated
+while excluding highly connected reactions
+\item minspan\_shifts - Explores how the average FPKM value changes per
+minspan under the different conditions we have. Also finds most differentially
+regulated minspans under aerobic vs anaerobic conditions and maps
+this with Visbio.
+\item core\_minspans - Looks at just the core minspans as calculated from
+the core model. Still uses iJO in order to associate the FPKM data.
+\item core\_flux - This explores how the FBA solution for the core model
+stacks up with the FPKM data, in the context of minspans. 
+\item ijo\_flux - Same thing for iJO1366. Note this script and in the one
+above, flux per minspan is calculated with the projection, or just
+a simple averaging.
+\item find\_bottlenecks - Solves iJO under pFBA and E-flux, and sees where
+individual reactions are over constrained. Is a precursor for the
+relax\_eflux script.
+\item relax\_eflux - This script finds the bottlenecks as above, and then
+relaxes those bounds in a recursive manner so E-flux does not over
+constrain the model.
+\item compare\_fpkms\_reactions - Combining FPKM data per reaction, compares
+two FPKM datasets to see how correlated they are under similar and
+disparate conditions. 
+\item microarray\_vs\_fpkm - Does a comparison by reactions like above,
+but uses data from the microarrays as well. 
+\end{itemize}
+
+\subsection*{transAnalysis Functions}
+
+These functions have descriptions, as well as input and outputs in
+their docstring.
+\begin{itemize}
+\item make\_gene\_fpkm\_dict - Makes a dictionary from an FPKM tracking
+file with genes as keys and FPKM levels as values
+\item make\_reaction\_fpkm\_dict - Using the GPRs associations, makes a
+dictionary with reactions as keys and combined fpkm values for the
+related genes as values.
+\item make\_minspan\_list - Creates a list of minspans from the excel file
+which contains them. Either for iJO or core model as tested.
+\item make\_minspan\_fpkm\_list - Averages FPKM values of the reactions
+for each minspan. Can choose a cut off value to exclude highly connected
+reactions.
+\item rank\_reactions - Rank reactions based on FPKM value as computed through
+the GPRs.
+\item fpkm\_comparison - Takes two FPKM filenames, a model, and a list of
+minspans and outputs a graph and correlation values for how the minspans
+line up in terms of their FPKM values.
+\item Eflux - Perform E-flux as per the Colijn et al. paper. Modified form
+the script the Danish guys sent.
+\item relax-bounds - Takes a model with an E-flux solution and recursively
+releases the bounds to find over-constrained reactions.
+\item make\_minspan\_k\_dict - A dictionary with minspan IDs as keys and
+the involved reactions in a list as values.
+\item make\_reaction\_k\_dict - A dictionary with reaction IDs as keys and
+involved minspans in a list as values.
+\item make\_reaction\_k\_dict1 - Same as above, but draws the reaction list
+from the minspans, so only reactions that are involved in minspans
+end up in the dictionary. 
+\item run\_pfba - Solve the model using pFBA, modified from Teddy's script.
+\item make\_model\_irrev - Used for run\_pfba\end{itemize}
+
+\end{document}

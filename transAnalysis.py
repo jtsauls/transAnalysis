@@ -10,60 +10,17 @@ import pandas as pd
 import cobra as cp
 
 
-def make_minspan_list(minspan_filename, sheetname='iJO1366'):
-    '''Reads the minspan .xls file returns minspans
-    INPUT
-        minspan_filename    .xls with minspans
-    OUTPUT
-        minspan_list        A list of list of minspans
-    '''
-    minspan_list = []
-
-    # Get minspan.
-    minspan_df = pd.read_excel(minspan_filename, sheetname,
-                               index_col=None, na_values=['NA'])
-    # Remove any rows that aren't gene names
-    # (aka the last line with pathway length).
-    minspan_df = minspan_df.drop(minspan_df.index[-1])
-
-    # Change (e) at end of reaction to _e
-    #minspan_df.replace('\(e\)$', '_e')
-    #for reacton in minspan_df[0]:
-    #    reaction = re.sub('\(e\)$', '_e', reaction)
-
-    # One minspan per column, starts on 3rd column.
-    for col in minspan_df.columns[2:]:
-        # Index of rows with values (not NaN)
-        value_index = np.isnan(minspan_df.loc[:, col])
-        value_index = np.logical_not(value_index)
-        now_minspan = minspan_df.loc[:, 'Rxn'][value_index]
-        now_minspan = now_minspan.values  # No labels
-        now_minspan = now_minspan.tolist()  # No numpy arrays.
-        # Change from unicode... not sure if this is wise.
-        now_minspan = [now_minspan[i].encode('ascii', 'ignore')
-                       for i in range(len(now_minspan))]
-        # Change (e) to _e
-        now_minspan = [reaction.replace('(e)', '_e') for reaction in
-                       now_minspan]
-        now_minspan = [reaction.replace('-', '__') for reaction in
-                       now_minspan]
-
-        minspan_list.append(now_minspan)
-
-    return minspan_list
-
-
-def make_gene_fpkm_dict(fpkm_filename, norm=False, lowcut=0, highcut=None):
+def make_gene_fpkm_dict(fpkm_filename, norm=False):
     '''Reads a fpkm tracking file and returns
     a dictionary with genes as keys and fpkms
     as values.
     INPUT
         fpkm_filename    An fpkm_tracking file.
-        lowcut           Reduce fpkm values belof this value to 0.
-        highcut          Set all fpkm values above this value to x.
+        norm             Normalizes data to 1.
     OUTPUT
         gene_fpkm_dict   Dictionary as per above descritpion.
     '''
+
     # Get fpkm values per gene and convert into dict.
     fpkm_df = pd.read_csv(fpkm_filename, delimiter='\t')
 
@@ -110,7 +67,7 @@ def make_reaction_fpkm_dict(model, gene_fpkm_dict, mode=0):
                         data_count += 1
                     except:
                         avgby -= 1
-                        #print "%s is not in reaction_fpkm_dict." \
+                        #print "%s is not in gene_fpkm_dict." \
                         #    % str(genename)
                 try:
                     andgroup_fpkm = andgroup_fpkm / avgby
@@ -139,22 +96,76 @@ def make_reaction_fpkm_dict(model, gene_fpkm_dict, mode=0):
                     #(str(gene), str(reaction.id))
             reaction_fpkm_dict[reaction.id] = fpkm_combined
 
-    # Should report how many reactions from model not in fpkm file
-    # and vice versa
+    # Should report how many genes/reactions from model not in fpkm file
     return reaction_fpkm_dict
 
 
+def make_minspan_list(minspan_filename, sheetname='iJO1366', format=True):
+    '''Reads the minspan .xls file returns minspans
+    INPUT
+        minspan_filename    .xls with minspans
+    OUTPUT
+        minspan_list        A list of list of minspans
+    '''
+    minspan_list = []
+
+    # Get minspan.
+    minspan_df = pd.read_excel(minspan_filename, sheetname,
+                               index_col=None, na_values=['NA'])
+    # Remove any rows that aren't gene names
+    # (aka the last line with pathway length).
+    minspan_df = minspan_df.drop(minspan_df.index[-1])
+
+    # Change (e) at end of reaction to _e
+    #minspan_df.replace('\(e\)$', '_e')
+    #for reacton in minspan_df[0]:
+    #    reaction = re.sub('\(e\)$', '_e', reaction)
+
+    # One minspan per column, starts on 3rd column.
+    for col in minspan_df.columns[2:]:
+        # Index of rows with values (not NaN)
+        value_index = np.isnan(minspan_df.loc[:, col])
+        value_index = np.logical_not(value_index)
+        now_minspan = minspan_df.loc[:, 'Rxn'][value_index]
+        now_minspan = now_minspan.values  # No labels
+        now_minspan = now_minspan.tolist()  # No numpy arrays.
+        # Change from unicode... not sure if this is wise.
+        now_minspan = [now_minspan[i].encode('ascii', 'ignore')
+                       for i in range(len(now_minspan))]
+        # Change (e) to _e
+        if format:
+            now_minspan = [reaction.replace('(e)', '_e') for reaction in
+                           now_minspan]
+            now_minspan = [reaction.replace('-', '__') for reaction in
+                           now_minspan]
+
+        minspan_list.append(now_minspan)
+
+    return minspan_list
+
+
 def make_minspan_fpkm_list(minspan_list, reaction_fpkm_dict,
-                           sort=False):
-    '''Rank minspans based on the average fpkm values of their
-    constituite reactionsk.
+                           sort=False, cutoff=0):
+    '''Creates a list tuples with the average transcript value per minspan
+    followed by the minspan. Optionally ranked.
     INPUT
         minspan_list
         reaction_fpkm_dict
         sort                 Indcates if the minspans should be ranked.
+        cutoff               Won't use values from reactions that are
+                             highly connected.
     OUTPUT
-        ranked_minspans
+        minspan_fpkm_list
     '''
+
+    # Remove fpkm data for highly connected reactions
+    if cutoff > 0:
+        # Dict with reactions as keys, minspans as values
+        reaction_k_dict = make_reaction_k_dict1(minspan_list)
+        for k, v in reaction_k_dict.iteritems():
+            if len(v) >= cutoff:
+                reaction_fpkm_dict[k] = float('nan')
+
     # Iterate over minspans, avg fpkm values from involved reactions.
     minspan_fpkm_list = []
     for minspan in minspan_list:
@@ -410,7 +421,7 @@ def relax_bounds(model):
 
 
 def make_minspan_k_dict(minspan_list):
-    '''
+    '''Dictionary with minspan IDs as keys, involved reactions as values.
     INPUT
         minspan_list
     OUTPUT
@@ -426,7 +437,7 @@ def make_minspan_k_dict(minspan_list):
 
 
 def make_reaction_k_dict(model, minspan_k_dict, report_wo=False):
-    '''
+    '''Dictionary with reactions as keys, involved minspans as values.
     INPUTS
         model
         minspan_k_dict
@@ -486,6 +497,27 @@ def make_reaction_k_dict1(minspan_list):
 
 
 # pFBA commands copied and edited from Teddy’s file.
+def run_pfba(model, biomass_function_name):
+    model.optimize(new_objective={biomass_function_name: 1})
+
+    model.reactions.get_by_id(biomass_function_name).upper_bound = \
+            model.solution.x_dict[biomass_function_name]
+    model.reactions.get_by_id(biomass_function_name).lower_bound = \
+            model.solution.x_dict[biomass_function_name]
+
+    irrev_model, old_to_new_rxn_map = make_model_irrev(model)
+    obj = dict([(k.id, 1) for k in irrev_model.reactions])
+    irrev_model.optimize(new_objective=obj, objective_sense='minimize')
+
+    sol = {}
+    for rxn in model.reactions:
+        sol[rxn.id] = sum([irrev_model.solution.x_dict[nrxn] * stoich for
+                           nrxn, stoich in
+                           old_to_new_rxn_map[rxn.id].items()])
+
+    return sol
+
+
 def make_model_irrev(model):
     irrev_model = model.copy()
     rxns_to_add = []
@@ -511,24 +543,3 @@ def make_model_irrev(model):
             old_to_new_rxn_map[rxn.id] = {rxn.id: 1}
     irrev_model.add_reactions(rxns_to_add)
     return irrev_model, old_to_new_rxn_map
-
-
-def run_pfba(model, biomass_function_name):
-    model.optimize(new_objective={biomass_function_name: 1})
-
-    model.reactions.get_by_id(biomass_function_name).upper_bound = \
-            model.solution.x_dict[biomass_function_name]
-    model.reactions.get_by_id(biomass_function_name).lower_bound = \
-            model.solution.x_dict[biomass_function_name]
-
-    irrev_model, old_to_new_rxn_map = make_model_irrev(model)
-    obj = dict([(k.id, 1) for k in irrev_model.reactions])
-    irrev_model.optimize(new_objective=obj, objective_sense='minimize')
-
-    sol = {}
-    for rxn in model.reactions:
-        sol[rxn.id] = sum([irrev_model.solution.x_dict[nrxn] * stoich for
-                           nrxn, stoich in
-                           old_to_new_rxn_map[rxn.id].items()])
-
-    return sol
